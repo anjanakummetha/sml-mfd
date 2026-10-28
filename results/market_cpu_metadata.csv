@@ -1,0 +1,31 @@
+﻿parameter,value
+backend,xgboost_rf
+xgboost_version,3.4.1
+requested_device,cpu
+actual_device,cpu
+track,market
+investor_id,1
+seed,1002
+n_estimators,2000
+boosting_rounds,1
+max_depth,3
+max_samples,0.05
+max_features,0.05
+reg_lambda,1e-05
+features_are_ranked,False
+n_candidate_features,51
+n_selected_features,26
+n_train_rows,40198
+n_prediction_rows,2086
+train_signal_start,2000-01
+train_signal_end,2014-12
+prediction_signal_start,2015-01
+prediction_signal_end,2015-12
+winsor_tail,0.01
+winsor_bounds,"[-0.43863228559494016, 0.6665112322568892]"
+preprocessing_seconds,0.43791189999319613
+fit_seconds,4.216176199988695
+predict_seconds,0.017624100000830367
+fit_and_predict_seconds,4.235141199998907
+row_sampling,uniform_without_replacement
+selected_features,"[""ami_126d"", ""beta_60m"", ""chcsho_12m"", ""coskew_21d"", ""ivol_capm_252d"", ""ivol_ff3_21d"", ""prc_highprc_252d"", ""resff3_6_1"", ""ret_12_1"", ""ret_1_0"", ""ret_60_12"", ""ret_9_1"", ""rmax1_21d"", ""rmax5_rvol_21d"", ""rvol_21d"", ""seas_11_15an"", ""seas_11_15na"", ""seas_16_20an"", ""seas_16_20na"", ""seas_1_1an"", ""seas_1_1na"", ""seas_2_5an"", ""seas_6_10an"", ""turnover_var_126d"", ""zero_trades_126d"", ""zero_trades_21d""]"

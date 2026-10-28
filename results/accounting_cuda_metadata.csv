@@ -1,0 +1,31 @@
+﻿parameter,value
+backend,xgboost_rf
+xgboost_version,3.4.1
+requested_device,cuda
+actual_device,cuda:0
+track,accounting
+investor_id,1
+seed,1002
+n_estimators,2000
+boosting_rounds,1
+max_depth,3
+max_samples,0.05
+max_features,0.05
+reg_lambda,1e-05
+features_are_ranked,False
+n_candidate_features,76
+n_selected_features,38
+n_train_rows,40198
+n_prediction_rows,2086
+train_signal_start,2000-01
+train_signal_end,2014-12
+prediction_signal_start,2015-01
+prediction_signal_end,2015-12
+winsor_tail,0.01
+winsor_bounds,"[-0.43863228559494016, 0.6665112322568892]"
+preprocessing_seconds,0.509437100001378
+fit_seconds,13.833748500008369
+predict_seconds,0.2318883999978425
+fit_and_predict_seconds,14.067658699990716
+row_sampling,uniform_without_replacement
+selected_features,"[""at_gr1"", ""at_turnover"", ""be_gr1a"", ""capex_abn"", ""capx_gr1"", ""capx_gr2"", ""capx_gr3"", ""cash_at"", ""coa_gr1a"", ""cop_atl1"", ""dsale_dsga"", ""eqnetis_at"", ""f_score"", ""fnl_gr1a"", ""gp_at"", ""gp_atl1"", ""nfna_gr1a"", ""ni_inc8q"", ""ni_ivol"", ""niq_be"", ""niq_be_chg1"", ""niq_su"", ""nncoa_gr1a"", ""oaccruals_ni"", ""op_at"", ""ope_be"", ""pi_nix"", ""ppeinv_gr1a"", ""rd5_at"", ""sale_bev"", ""sale_gr3"", ""saleq_gr1"", ""saleq_su"", ""sti_gr1a"", ""taccruals_at"", ""taccruals_ni"", ""tangibility"", ""tax_gr1a""]"
