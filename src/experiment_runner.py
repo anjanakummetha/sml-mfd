@@ -54,7 +54,9 @@ def read_job_window(data_dir: Path, year: int, window: int, features: list[str],
     from src.rolling_window import load_panel, window_months
 
     first_train, _, first_test, last_test = window_months(year, window)
-    columns = ["id", "eom", "ret_exc_lead1m", *features]
+    # Keep unranked signal-month market value and the raw next-month return for
+    # Task 7's value-weighted portfolios and backtest. Neither is a predictor.
+    columns = ["id", "eom", "ret_exc_lead1m", "ret_lead1m", "me", *features]
     frames = []
     expected_periods = pd.period_range(first_train, last_test, freq="M")
     if stocks_per_month is not None:
@@ -158,6 +160,13 @@ def run_job(*, data_dir: Path, manifest_path: Path, output_dir: Path,
         max_depth=3, device=device, n_jobs=n_jobs,
     )
     forecast = output["predictions"].copy()
+    forecast_rows = len(forecast)
+    forecast = forecast.merge(
+        test[["id", "eom", "ret_lead1m", "me"]],
+        on=["id", "eom"], how="inner", validate="one_to_one",
+    )
+    if len(forecast) != forecast_rows:
+        raise ValueError("Model forecasts do not match the prediction stock/month keys")
     forecast["forecast_year"] = forecast_year
     forecast["train_window"] = train_months
     forecast["mode"] = mode

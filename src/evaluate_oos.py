@@ -1,7 +1,8 @@
-"""Aggregate investor forecasts, evaluate OOS returns, and compute MFD gap.
+"""Aggregate investor forecasts, evaluate OOS returns, and compute disagreement.
 
-MFD = |mean(accounting investor predictions) - mean(market investor predictions)|.
-The within-track investor SD is reported separately, NOT called MFD.
+The output has three distinct scores: the SD of investor forecasts within each
+track and the absolute gap between the two track means. The legacy ``mfd``
+column is an alias for that cross-track gap, not the paper's pooled MFD measure.
 """
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ def aggregate_one_track(files: list[Path], expected_investors: int) -> pd.DataFr
     seen_ids = set()
     for path in sorted(files):
         frame = pd.read_csv(path, parse_dates=["eom"]).sort_values(KEYS).reset_index(drop=True)
-        required = set(KEYS + ["track", "investor_id", "ret_exc_lead1m", "prediction",
+        required = set(KEYS + ["track", "investor_id", "ret_exc_lead1m", "ret_lead1m", "me", "prediction",
                                "mode", "train_window", "forecast_year"])
         if required - set(frame):
             raise ValueError(f"Missing required columns in {path}: {required - set(frame)}")
@@ -47,14 +48,17 @@ def aggregate_one_track(files: list[Path], expected_investors: int) -> pd.DataFr
             for name in ("track", "mode", "train_window", "forecast_year"):
                 if not (frame[name].to_numpy() == frame0[name].to_numpy()).all():
                     raise ValueError(f"{name} does not match between investors")
-            first_y = pd.to_numeric(frame0.ret_exc_lead1m, errors="coerce").to_numpy(float)
-            next_y = pd.to_numeric(frame.ret_exc_lead1m, errors="coerce").to_numpy(float)
-            if not np.allclose(first_y, next_y, rtol=1e-6, atol=1e-10, equal_nan=True):
-                raise ValueError(f"Realized return mismatch in {path}")
+            for name in ("ret_exc_lead1m", "ret_lead1m", "me"):
+                first = pd.to_numeric(frame0[name], errors="coerce").to_numpy(float)
+                next_value = pd.to_numeric(frame[name], errors="coerce").to_numpy(float)
+                if not np.allclose(first, next_value, rtol=1e-6, atol=1e-10, equal_nan=True):
+                    raise ValueError(f"{name} mismatch in {path}")
         predictions.append(frame.prediction.to_numpy(dtype=float))
     stacked = np.stack(predictions)
-    result = frame0[["id", "eom", "ret_exc_lead1m", "track", "mode", "train_window", "forecast_year"]].copy()
-    result = result.rename(columns={"ret_exc_lead1m": "actual_excess_return"})
+    result = frame0[["id", "eom", "ret_exc_lead1m", "ret_lead1m", "me",
+                     "track", "mode", "train_window", "forecast_year"]].copy()
+    result = result.rename(columns={"ret_exc_lead1m": "actual_excess_return",
+                                    "ret_lead1m": "actual_raw_return"})
     result["predicted_excess_return"] = stacked.mean(axis=0)
     result["investor_disagreement_sd"] = stacked.std(axis=0, ddof=0)
     result["n_investors"] = len(files)
@@ -95,7 +99,8 @@ def compute_mfd(aggregate: pd.DataFrame) -> pd.DataFrame:
     if not set(TRACKS).issubset(set(aggregate.track)):
         return pd.DataFrame(columns=["id", "eom", "mode", "train_window", "mfd"])
     key = ["id", "eom", "mode", "train_window"]
-    outputs = ["predicted_excess_return", "actual_excess_return", "investor_disagreement_sd"]
+    outputs = ["predicted_excess_return", "actual_excess_return", "actual_raw_return",
+               "me", "investor_disagreement_sd"]
     a = aggregate.loc[aggregate.track == "accounting", key + outputs].copy()
     m = aggregate.loc[aggregate.track == "market", key + outputs].copy()
     if a[key].duplicated().any() or m[key].duplicated().any():
@@ -105,20 +110,24 @@ def compute_mfd(aggregate: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("Accounting and market forecasts have no overlapping stock/month keys")
     if len(combined) != len(a) or len(combined) != len(m):
         raise ValueError("Accounting and market forecasts must cover identical stock/month keys")
-    aa = combined.actual_excess_return_accounting.to_numpy(float)
-    mm = combined.actual_excess_return_market.to_numpy(float)
-    if not np.allclose(aa, mm, rtol=1e-6, atol=1e-10, equal_nan=True):
-        raise ValueError("Actual returns differ across tracks")
+    for name in ("actual_excess_return", "actual_raw_return", "me"):
+        aa = combined[f"{name}_accounting"].to_numpy(float)
+        mm = combined[f"{name}_market"].to_numpy(float)
+        if not np.allclose(aa, mm, rtol=1e-6, atol=1e-10, equal_nan=True):
+            raise ValueError(f"{name} differs across tracks")
     combined["signed_gap"] = (combined.predicted_excess_return_accounting
                               - combined.predicted_excess_return_market)
-    combined["mfd"] = combined.signed_gap.abs()
+    combined["cross_track_disagreement_abs"] = combined.signed_gap.abs()
+    combined["mfd"] = combined["cross_track_disagreement_abs"]  # legacy alias
     combined = combined.rename(columns={
         "predicted_excess_return_accounting": "accounting_mean",
         "predicted_excess_return_market": "market_mean",
         "investor_disagreement_sd_accounting": "accounting_disagreement_sd",
         "investor_disagreement_sd_market": "market_disagreement_sd",
         "actual_excess_return_accounting": "actual_excess_return",
-    }).drop(columns=["actual_excess_return_market"])
+    }).drop(columns=["actual_excess_return_market", "actual_raw_return_market", "me_market"])
+    combined = combined.rename(columns={"actual_raw_return_accounting": "actual_raw_return",
+                                        "me_accounting": "me"})
     return combined
 
 
