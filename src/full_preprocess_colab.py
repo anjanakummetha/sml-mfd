@@ -1,7 +1,6 @@
 """Full JKP 2000–2015 Task 2 preprocessing for the SML two-track study.
 
-Run this file in Google Colab after mounting the user's Drive. It never samples
-stocks, trains models, alters the source CSV, or writes stock data to GitHub.
+Run this file in Google Colab after mounting the user's Drive. 
 """
 
 from __future__ import annotations
