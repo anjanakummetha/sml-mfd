@@ -78,6 +78,7 @@ for track in accounting market; do
   export SML_JOBS="${jobs}"
   job_id="$(sbatch --parsable \
     --partition="${SML_GPU_PARTITION}" \
+    --time=00:15:00 \
     --array="0-$((count - 1))%${max_parallel}" \
     --output="${SML_OUTPUT_DIR}/logs/slurm-%A_%a.out" \
     --error="${SML_OUTPUT_DIR}/logs/slurm-%A_%a.err" \
