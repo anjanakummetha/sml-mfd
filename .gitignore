@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Cluster outputs and logs belong on scratch, not in the source repository.
+results/*
+!results/.gitkeep
+slurm-*.out
+slurm-*.err
+smoke-integration-*.out
+smoke-integration-*.err
+benchmark-*.out
+benchmark-*.err
