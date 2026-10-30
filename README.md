@@ -17,15 +17,18 @@ export SML_DATA_DIR=/lustre/nvwulf/scratch/akummetha/sml-data/monthly
 export SML_PYTHON=/lustre/nvwulf/home/akummetha/conda/envs/sml/bin/python
 export SML_OUTPUT_DIR=/lustre/nvwulf/scratch/akummetha/sml-full-60-20261030
 export SML_GPU_PARTITION=b40x4
-export SML_MAX_PARALLEL_PER_TRACK=2
+export SML_MAX_PARALLEL=2
 bash slurm/submit_full_60.sh
 ```
 
-The launcher checks for every month from 2000-01 through 2015-12, creates two
-550-task arrays (50 investors × 11 forecast years per track), and submits a CPU
-aggregation job that waits for both arrays to finish successfully. It writes
-the Slurm IDs to `$SML_OUTPUT_DIR/submitted-jobs-60.txt`. Inspect progress with
-`squeue -u "$USER"` and completed tasks with `sacct -j JOB_ID -X`.
+The launcher checks every month from 2000-01 through 2015-12 and creates one
+1,100-row job list (50 investors × 11 forecast years × 2 tracks). NVwulf's
+`b40x4` QOS permits 100 submitted jobs per user, so a CPU-only controller
+submits waves of at most 90 GPU array tasks and waits for each wave before
+submitting the next. It then submits the aggregation job. The controller and
+wave IDs are written to `$SML_OUTPUT_DIR/submitted-jobs-60.txt`. Inspect
+progress with `squeue -u "$USER"`, `sacct -j JOB_ID -X`, and the controller log
+in `$SML_OUTPUT_DIR/logs`.
 
 The final stock-month file is `$SML_OUTPUT_DIR/mfd_60.csv`. Its distinct
 disagreement columns are `accounting_disagreement_sd`,
