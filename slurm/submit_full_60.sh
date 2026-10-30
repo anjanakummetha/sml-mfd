@@ -62,47 +62,21 @@ print(f"Preflight passed: 192 monthly files, {total_rows:,} stock-month rows")
 PY
 
 mkdir -p "${SML_OUTPUT_DIR}/logs"
-export SML_MODE=60 SML_DATA_DIR SML_OUTPUT_DIR SML_PYTHON
-max_parallel="${SML_MAX_PARALLEL_PER_TRACK:-2}"
-[[ "${max_parallel}" =~ ^[1-9][0-9]*$ ]] || {
-  echo "SML_MAX_PARALLEL_PER_TRACK must be positive" >&2
-  exit 2
-}
+export SML_MODE=60 SML_DATA_DIR SML_OUTPUT_DIR SML_PYTHON SML_GPU_PARTITION
+export SML_JOBS="${SML_OUTPUT_DIR}/jobs-all-60.csv"
+"${SML_PYTHON}" -m src.experiment_runner make-jobs \
+  --mode 60 --tracks accounting market --investors 50 --out "${SML_JOBS}"
+count=$(( $(wc -l < "${SML_JOBS}") - 1 ))
+[[ "${count}" -eq 1100 ]] || { echo "Expected 1100 jobs, got ${count}" >&2; exit 2; }
 
-for track in accounting market; do
-  jobs="${SML_OUTPUT_DIR}/jobs-${track}-60.csv"
-  "${SML_PYTHON}" -m src.experiment_runner make-jobs \
-    --mode 60 --tracks "${track}" --investors 50 --out "${jobs}"
-  count=$(( $(wc -l < "${jobs}") - 1 ))
-  [[ "${count}" -eq 550 ]] || { echo "Expected 550 ${track} jobs, got ${count}" >&2; exit 2; }
-  export SML_JOBS="${jobs}"
-  job_id="$(sbatch --parsable \
-    --partition="${SML_GPU_PARTITION}" \
-    --time=00:15:00 \
-    --array="0-$((count - 1))%${max_parallel}" \
-    --output="${SML_OUTPUT_DIR}/logs/slurm-%A_%a.out" \
-    --error="${SML_OUTPUT_DIR}/logs/slurm-%A_%a.err" \
-    --export=ALL slurm/run_experiment.sbatch)"
-  job_id="${job_id%%;*}"
-  printf '%s array job: %s\n' "${track}" "${job_id}"
-  if [[ "${track}" == accounting ]]; then
-    accounting_job="${job_id}"
-  else
-    market_job="${job_id}"
-  fi
-done
-
-# The dependency ensures no partial result is mistaken for a full experiment.
-cpu_partition="${SML_CPU_PARTITION:-${SML_GPU_PARTITION}}"
-aggregate_job="$(sbatch --parsable \
-  --partition="${cpu_partition}" \
-  --dependency="afterok:${accounting_job}:${market_job}" \
-  --output="${SML_OUTPUT_DIR}/logs/aggregate-%j.out" \
-  --error="${SML_OUTPUT_DIR}/logs/aggregate-%j.err" \
-  --export=ALL slurm/aggregate_experiment.sbatch)"
-aggregate_job="${aggregate_job%%;*}"
-printf 'aggregate job: %s\nFinal output: %s/mfd_60.csv\n' \
-  "${aggregate_job}" "${SML_OUTPUT_DIR}"
-printf 'accounting=%s\nmarket=%s\naggregate=%s\n' \
-  "${accounting_job}" "${market_job}" "${aggregate_job}" \
-  > "${SML_OUTPUT_DIR}/submitted-jobs-60.txt"
+# NVwulf's b40x4 QOS allows 100 submitted jobs per user. The controller
+# occupies one slot and submits at most 90 array tasks at a time.
+controller_job="$(sbatch --parsable \
+  --partition="${SML_GPU_PARTITION}" \
+  --output="${SML_OUTPUT_DIR}/logs/controller-%j.out" \
+  --error="${SML_OUTPUT_DIR}/logs/controller-%j.err" \
+  --export=ALL slurm/full_60_controller.sbatch)"
+controller_job="${controller_job%%;*}"
+printf 'controller=%s\n' "${controller_job}" > "${SML_OUTPUT_DIR}/submitted-jobs-60.txt"
+printf 'Controller job: %s\nFinal output: %s/mfd_60.csv\n' \
+  "${controller_job}" "${SML_OUTPUT_DIR}"
