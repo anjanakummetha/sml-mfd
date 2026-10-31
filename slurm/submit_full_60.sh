@@ -16,8 +16,8 @@ set -euo pipefail
   echo "Check SML_DATA_DIR and SML_PYTHON" >&2
   exit 2
 }
-[[ ! -e "${SML_OUTPUT_DIR}/predictions/60" ]] || {
-  echo "Production predictions already exist at ${SML_OUTPUT_DIR}; use a new output directory" >&2
+[[ ! -e "${SML_OUTPUT_DIR}/predictions/60" || "${SML_RESUME:-0}" == 1 ]] || {
+  echo "Production predictions already exist at ${SML_OUTPUT_DIR}; set SML_RESUME=1 to reuse verified results" >&2
   exit 2
 }
 for year in {2000..2015}; do
@@ -77,6 +77,10 @@ controller_job="$(sbatch --parsable \
   --error="${SML_OUTPUT_DIR}/logs/controller-%j.err" \
   --export=ALL slurm/full_60_controller.sbatch)"
 controller_job="${controller_job%%;*}"
-printf 'controller=%s\n' "${controller_job}" > "${SML_OUTPUT_DIR}/submitted-jobs-60.txt"
+if [[ "${SML_RESUME:-0}" == 1 ]]; then
+  printf 'controller=%s (resume)\n' "${controller_job}" >> "${SML_OUTPUT_DIR}/submitted-jobs-60.txt"
+else
+  printf 'controller=%s\n' "${controller_job}" > "${SML_OUTPUT_DIR}/submitted-jobs-60.txt"
+fi
 printf 'Controller job: %s\nFinal output: %s/mfd_60.csv\n' \
   "${controller_job}" "${SML_OUTPUT_DIR}"
