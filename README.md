@@ -30,6 +30,11 @@ wave IDs are written to `$SML_OUTPUT_DIR/submitted-jobs-60.txt`. Inspect
 progress with `squeue -u "$USER"`, `sacct -j JOB_ID -X`, and the controller log
 in `$SML_OUTPUT_DIR/logs`.
 
+If the controller stops, set `SML_RESUME=1` and rerun the launcher with the
+same output directory. It checks each completed wave and submits only waves
+with missing predictions. Each Slurm array uses task IDs starting at zero;
+the corresponding wave CSV maps them to the full job list.
+
 The final stock-month file is `$SML_OUTPUT_DIR/mfd_60.csv`. Its distinct
 disagreement columns are `accounting_disagreement_sd`,
 `market_disagreement_sd`, and `cross_track_disagreement_abs`. The legacy `mfd`
