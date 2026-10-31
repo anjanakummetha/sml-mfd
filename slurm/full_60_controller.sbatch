@@ -62,7 +62,9 @@ with jobs.open(newline="") as source:
     with wave.open("w", newline="") as target:
         writer = csv.DictWriter(target, fieldnames=reader.fieldnames)
         writer.writeheader()
-        writer.writerows(rows[start:end + 1])
+        for task_id, row in enumerate(rows[start:end + 1]):
+            row["task_id"] = task_id
+            writer.writerow(row)
 PY
   wave_count=$((end - start + 1))
   echo "Submitting investor-year tasks ${start}-${end} at $(date -Is)"
