@@ -1,11 +1,4 @@
-"""Run one SML investor/year/track experiment using Junwei and Matthew's APIs.
-
-Dependencies (not duplicated here):
-  src.investor_rf.train_one_investor_gpu (Junwei, PR #1)
-  src.rolling_window.get_window / window_months / build_job_list (Matthew, PR #2)
-
-A production job fits once per year and predicts each month in that year.
-"""
+"""Train one investor for one year and save that year's forecasts."""
 from __future__ import annotations
 
 import argparse
