@@ -1,8 +1,4 @@
-"""One-investor XGBoost GPU random forest for the SML two-track project.
-
-No file I/O or model training takes place on import. The caller owns rolling
-windows, annual refitting, Parquet loading, SLURM scheduling and persistence.
-"""
+"""Train one accounting or market investor with an XGBoost GPU random forest."""
 from __future__ import annotations
 
 import json

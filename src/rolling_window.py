@@ -1,26 +1,4 @@
-"""
-Task 4 - Rolling-window forecasting loop.
-
-Decides what each model trains on and what it predicts:
-  * forecast years 2005-2015
-  * train on the 60 months (by `eom` date, never row counts) before the forecast year
-  * predict every month of the forecast year; refit once per year
-  * hard check that nothing in the training window comes from the test period
-  * job list (track x investor x year) for the SLURM job array
-
-Model code (RF, XGBoost, ...) should import `get_window` and plug its own model in:
-
-    from rolling_window import load_panel, get_window
-    train_mask, test_mask = get_window(df, forecast_year)
-
-The `practice` command reproduces the small-sample 50-tree random forest run.
-
-Examples
---------
-  python src/rolling_window.py windows   --data /path/to/panel.parquet
-  python src/rolling_window.py make-jobs --tracks T1 T2 --investors I1 I2 --out config/jobs.csv
-  python src/rolling_window.py practice  --data jkp_practice_subset_2000_2015.csv
-"""
+"""Build yearly forecast windows and Slurm job lists without using future data."""
 
 from __future__ import annotations
 
