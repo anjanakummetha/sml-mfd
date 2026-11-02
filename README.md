@@ -3,7 +3,7 @@
 We compare forecasts from accounting and market data to see whether disagreement
 predicts next month's stock returns. `src/full_preprocess_colab.py` prepares the
 2000–2015 JKP panel as 192 monthly Parquet files. `config/feature_manifest.json`
-lists the features in each track. Data and results stay off GitHub.
+lists the features in each track. 
 
 On NVwulf, run this from the repository root after copying the monthly files to
 scratch, with `feature_manifest.json` beside the `monthly/` directory:
