@@ -1,0 +1,57 @@
+{
+  "name": "baseline",
+  "_note": "Paper-style trade: long the lowest-disagreement 10%, short the highest 10%, for each score and two combinations, equal- and value-weighted.",
+  "data": {
+    "path": "data/mfd_60.csv",
+    "ret_col": "actual_excess_return",
+    "me_col": "me"
+  },
+  "factors_dir": "config/factors",
+  "defaults": {
+    "tail_pct": 10,
+    "standardize": "rank",
+    "n_buckets": 10,
+    "nw_lags": 6,
+    "sweep": {
+      "weighting": [
+        "equal",
+        "value"
+      ]
+    }
+  },
+  "strategies": [
+    {
+      "name": "accounting_sd",
+      "signal": {
+        "accounting_disagreement_sd": 1
+      }
+    },
+    {
+      "name": "market_sd",
+      "signal": {
+        "market_disagreement_sd": 1
+      }
+    },
+    {
+      "name": "cross_track_mfd",
+      "signal": {
+        "mfd": 1
+      }
+    },
+    {
+      "name": "within_track_avg",
+      "signal": {
+        "accounting_disagreement_sd": 0.5,
+        "market_disagreement_sd": 0.5
+      }
+    },
+    {
+      "name": "all_three_avg",
+      "signal": {
+        "accounting_disagreement_sd": 1,
+        "market_disagreement_sd": 1,
+        "mfd": 1
+      }
+    }
+  ]
+}

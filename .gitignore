@@ -11,3 +11,8 @@ smoke-integration-*.out
 smoke-integration-*.err
 benchmark-*.out
 benchmark-*.err
+
+# Backtester inputs (mfd_60.csv etc.) are CRSP/JKP-derived and stay local. See README.
+data/*
+!data/.gitkeep
+.venv/

@@ -1,0 +1,140 @@
+{
+  "_note": "Datasets the dashboard and tests can load. Paths are relative to the repository root. data/ is git-ignored: copy mfd_60.csv (and mfd_120.csv when it exists) from $SML_OUTPUT_DIR on NVwulf. Datasets whose file is missing are hidden in the dashboard.",
+  "datasets": {
+    "MFD · 60-month window (2005–2015)": {
+      "path": "data/mfd_60.csv",
+      "ret_col": "actual_excess_return",
+      "me_col": "me",
+      "not_signals": [
+        "mode",
+        "train_window",
+        "actual_raw_return",
+        "cross_track_disagreement_abs"
+      ],
+      "labels": {
+        "accounting_disagreement_sd": "Accounting disagreement",
+        "market_disagreement_sd": "Market disagreement",
+        "mfd": "Cross-track |acct − mkt|",
+        "signed_gap": "Signed gap (acct − mkt)",
+        "accounting_mean": "Accounting mean forecast",
+        "market_mean": "Market mean forecast"
+      }
+    },
+    "MFD · 120-month window": {
+      "path": "data/mfd_120.csv",
+      "ret_col": "actual_excess_return",
+      "me_col": "me",
+      "not_signals": [
+        "mode",
+        "train_window",
+        "actual_raw_return",
+        "cross_track_disagreement_abs"
+      ],
+      "labels": {
+        "accounting_disagreement_sd": "Accounting disagreement",
+        "market_disagreement_sd": "Market disagreement",
+        "mfd": "Cross-track |acct − mkt|",
+        "signed_gap": "Signed gap (acct − mkt)",
+        "accounting_mean": "Accounting mean forecast",
+        "market_mean": "Market mean forecast"
+      }
+    },
+    "Last year · predicted returns (2020–2025)": {
+      "path": "data/lastyear_bbl_predictions.csv",
+      "ret_col": "ret_exc_lead1m",
+      "me_col": null,
+      "not_signals": [],
+      "labels": {
+        "prediction_accounting": "Accounting prediction",
+        "prediction_market": "Market prediction",
+        "forecast_disagreement_abs": "|acct − mkt| gap"
+      }
+    }
+  },
+  "presets": {
+    "Paper trade · cross-track MFD": {
+      "dataset": "MFD · 60-month window (2005–2015)",
+      "signal": {
+        "mfd": 1
+      },
+      "long_pct": [
+        0,
+        10
+      ],
+      "short_pct": [
+        90,
+        100
+      ]
+    },
+    "Paper trade · accounting + market SD": {
+      "dataset": "MFD · 60-month window (2005–2015)",
+      "signal": {
+        "accounting_disagreement_sd": 0.5,
+        "market_disagreement_sd": 0.5
+      },
+      "long_pct": [
+        0,
+        10
+      ],
+      "short_pct": [
+        90,
+        100
+      ]
+    },
+    "Paper trade · cross-track MFD (120-month window)": {
+      "dataset": "MFD · 120-month window",
+      "signal": {
+        "mfd": 1
+      },
+      "long_pct": [
+        0,
+        10
+      ],
+      "short_pct": [
+        90,
+        100
+      ]
+    },
+    "Reproduce last year · market track": {
+      "dataset": "Last year · predicted returns (2020–2025)",
+      "signal": {
+        "prediction_market": 1
+      },
+      "long_pct": [
+        90,
+        100
+      ],
+      "short_pct": [
+        0,
+        10
+      ],
+      "tie_method": "min"
+    },
+    "Reproduce last year · accounting track": {
+      "dataset": "Last year · predicted returns (2020–2025)",
+      "signal": {
+        "prediction_accounting": 1
+      },
+      "long_pct": [
+        90,
+        100
+      ],
+      "short_pct": [
+        0,
+        10
+      ],
+      "tie_method": "min"
+    }
+  },
+  "reproduction_targets": {
+    "_note": "Last year's Task 7 (top 10% minus bottom 10% by predicted return, equal-weighted, 70 months).",
+    "Reproduce last year · market track": {
+      "mean_monthly": 0.028384,
+      "t_stat": 2.8897
+    },
+    "Reproduce last year · accounting track": {
+      "mean_monthly": 0.015213,
+      "t_stat": 1.9927
+    }
+  }
+}

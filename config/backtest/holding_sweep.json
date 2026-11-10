@@ -1,0 +1,39 @@
+{
+  "name": "holding_sweep",
+  "_note": "Overlapping portfolios: each month a new cohort gets 1/K of the capital and is held K months.",
+  "data": {
+    "path": "data/mfd_60.csv",
+    "ret_col": "actual_excess_return",
+    "me_col": "me"
+  },
+  "factors_dir": "config/factors",
+  "defaults": {
+    "tail_pct": 10,
+    "weighting": "equal",
+    "ramp_up": "drop",
+    "sweep": {
+      "holding_months": [
+        1,
+        2,
+        3,
+        6,
+        12
+      ]
+    }
+  },
+  "strategies": [
+    {
+      "name": "cross_track_mfd",
+      "signal": {
+        "mfd": 1
+      }
+    },
+    {
+      "name": "within_track_avg",
+      "signal": {
+        "accounting_disagreement_sd": 0.5,
+        "market_disagreement_sd": 0.5
+      }
+    }
+  ]
+}

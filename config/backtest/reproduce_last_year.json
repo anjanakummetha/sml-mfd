@@ -1,0 +1,36 @@
+{
+  "name": "reproduce_last_year",
+  "_note": "Sanity check: last year's Task 7 top-10% minus bottom-10% by predicted return. Expect market 2.84%/mo t=2.89, accounting 1.52% t=1.99.",
+  "data": {
+    "path": "data/lastyear_bbl_predictions.csv",
+    "ret_col": "ret_exc_lead1m",
+    "me_col": null
+  },
+  "factors_dir": "config/factors",
+  "defaults": {
+    "long_pct": [
+      90,
+      100
+    ],
+    "short_pct": [
+      0,
+      10
+    ],
+    "weighting": "equal",
+    "tie_method": "min"
+  },
+  "strategies": [
+    {
+      "name": "lastyear_accounting_HmL",
+      "signal": {
+        "prediction_accounting": 1
+      }
+    },
+    {
+      "name": "lastyear_market_HmL",
+      "signal": {
+        "prediction_market": 1
+      }
+    }
+  ]
+}
