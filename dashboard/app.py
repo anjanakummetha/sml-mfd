@@ -62,6 +62,11 @@ def label(key: str, col: str) -> str:
     return DATASETS[key].get("labels", {}).get(col, col)
 
 
+def data_file(key: str) -> str:
+    """The input file's name, as shown on the dashboard (e.g. mfd_60.csv)."""
+    return Path(DATASETS[key]["path"]).name
+
+
 if not PRESETS:                              # data present but no preset for it: start from its first score
     _ds = next(iter(DATASETS))
     PRESETS = {"Default": {"dataset": _ds, "signal": {signal_columns(_ds)[0]: 1}}}
@@ -264,7 +269,7 @@ def spec_lines(s: bt.Strategy, key: str) -> list[str]:
     hold = f"K = {s.holding_months}" + (f" ({s.ramp_up} first K−1 months)" if s.holding_months > 1 else "")
     sample = f"formation {s.start} to {s.end}" + (f", smallest {s.drop_size_pct:g}% by ME excluded"
                                                   if s.drop_size_pct else "")
-    return [f"{key}",
+    return [f"Data file: {data_file(key)}",
             f"Sort on {sig} ({s.standardize}) · {legs} · {s.weighting}-weighted · {hold}",
             f"{sample} · {len(mo)} return months, {mo.index[0]:%Y-%m} to {mo.index[-1]:%Y-%m} · "
             f"Newey-West lags {s.nw_lags}"]
@@ -415,7 +420,7 @@ with tabs[5]:
                 ("max_drawdown", "Max DD", PCT), ("alpha_FF6", "FF6 α", PCT), ("alpha_FF6_t", "α t", NUM),
                 ("avg_turnover_long", "Turnover L", PCT), ("avg_turnover_short", "Turnover S", PCT),
                 ("n_months", "Months", INT)]
-        tbl = pd.DataFrame([{"Specification": r["label"], "Dataset": r["dataset"],
+        tbl = pd.DataFrame([{"Specification": r["label"], "Data file": data_file(r["dataset"]),
                              **{lbl: r["summary"].get(k_, np.nan) for k_, lbl, _ in keys}} for r in runs])
         show_table(tbl, {lbl: f for _, lbl, f in keys})
         st.caption("Long − short statistics. " + RET_NOTE)
