@@ -31,22 +31,38 @@ is a separate, optional check.
 
 ## Backtester (Task 7)
 
-`src/backtester.py` sorts stocks into portfolios on the disagreement scores in `mfd_60.csv` and reports
-returns, Newey-West t-statistics, Sharpe ratios, drawdowns, Fama-French alphas and turnover. Percentile
-ranges, score combinations, equal or value weighting, and holding periods of 1–12 months (overlapping
-portfolios) are all set in the config files in `config/backtest/`. It runs on a laptop; the cluster
-environment is not needed.
+`src/backtester.py` sorts stocks into portfolios on a score each month and reports returns, Newey-West
+t-statistics, Sharpe ratios, drawdowns, Fama-French alphas and turnover. Percentile ranges, equal or value
+weighting, and holding periods of 1–12 months (overlapping portfolios) are set per strategy. It runs on a
+laptop; the cluster environment is not needed.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements-backtest.txt
 mkdir -p data && cp "$SML_OUTPUT_DIR/mfd_60.csv" data/          # data/ is git-ignored
-.venv/bin/python -m src.backtester config/backtest/baseline.json   # results in results/backtest/
-.venv/bin/python tests/test_backtester.py                          # engine checks
 .venv/bin/streamlit run dashboard/app.py                           # research dashboard
+.venv/bin/python -m src.backtester config/backtest/baseline.json   # results in results/backtest/
+.venv/bin/python -m src.backtester config/backtest/baseline.json --data data/mfd_120.csv   # same, other file
+.venv/bin/python tests/test_backtester.py                          # engine checks
 ```
 
-The dashboard shows the portfolio-sort, factor-regression, subperiod and turnover tables for any
-specification, plus the engine's checks. `config/backtest/datasets.json` lists the input files; a
-dataset appears only when its file is in `data/`. The Fama-French factors in `config/factors/` are
-from Kenneth French's data library. The last-year reproduction test needs last year's
-`full_bbl_predictions.csv` saved as `data/lastyear_bbl_predictions.csv`; without it that test is skipped.
+**Data files.** Every CSV or Parquet file in `data/` with a stock id, a formation month, a next-month
+return and the columns of at least one strategy type is picked up automatically, in the dashboard and by
+`--data` (`python -m src.backtester --list-data` lists them). Column names are matched through
+`config/backtest/columns.json`; a file with differently named columns only needs its names added there.
+
+**Strategy types** (long the low end of the score, short the high end, unless noted):
+
+| Type | Sorts on |
+|---|---|
+| Cross-track MFD | \|accounting mean forecast − market mean forecast\| |
+| Accounting disagreement | SD of the accounting track's investors' forecasts |
+| Market disagreement | SD of the market track's investors' forecasts |
+| Accounting + market disagreement (50/50) | Average of the two within-track SD ranks |
+| Pooled MFD | SD of all investors' forecasts pooled across both tracks, computed from the per-track columns |
+| Accounting / market prediction | The track's predicted return, long the high end (last year's Task 7) |
+
+A custom combination of any columns with any weights is also available. In a config, a strategy names
+a type (`"strategy_type": "pooled_mfd"`) or its own columns (`"signal": {...}`); types or weightings a
+file can't support are skipped, so one config runs on any data file. The Fama-French factors in
+`config/factors/` are from Kenneth French's data library. The last-year reproduction test needs last
+year's `full_bbl_predictions.csv` saved as `data/lastyear_bbl_predictions.csv`; without it that test is skipped.

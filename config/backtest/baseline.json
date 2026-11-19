@@ -1,57 +1,19 @@
 {
   "name": "baseline",
-  "_note": "Paper-style trade: long the lowest-disagreement 10%, short the highest 10%, for each score and two combinations, equal- and value-weighted.",
-  "data": {
-    "path": "data/mfd_60.csv",
-    "ret_col": "actual_excess_return",
-    "me_col": "me"
-  },
+  "_note": "Every strategy type, equal- and value-weighted, 10% tails. Types or weightings the data file can't support are skipped, so this config runs on any file: python -m src.backtester config/backtest/baseline.json --data data/<file>.",
+  "data": {"path": "data/mfd_60.csv"},
   "factors_dir": "config/factors",
-  "defaults": {
-    "tail_pct": 10,
-    "standardize": "rank",
-    "n_buckets": 10,
-    "nw_lags": 6,
-    "sweep": {
-      "weighting": [
-        "equal",
-        "value"
-      ]
-    }
-  },
+  "defaults": {"tail_pct": 10, "standardize": "rank", "n_buckets": 10, "nw_lags": 6,
+               "sweep": {"weighting": ["equal", "value"]}},
   "strategies": [
-    {
-      "name": "accounting_sd",
-      "signal": {
-        "accounting_disagreement_sd": 1
-      }
-    },
-    {
-      "name": "market_sd",
-      "signal": {
-        "market_disagreement_sd": 1
-      }
-    },
-    {
-      "name": "cross_track_mfd",
-      "signal": {
-        "mfd": 1
-      }
-    },
-    {
-      "name": "within_track_avg",
-      "signal": {
-        "accounting_disagreement_sd": 0.5,
-        "market_disagreement_sd": 0.5
-      }
-    },
-    {
-      "name": "all_three_avg",
-      "signal": {
-        "accounting_disagreement_sd": 1,
-        "market_disagreement_sd": 1,
-        "mfd": 1
-      }
-    }
+    {"name": "cross_track_mfd", "strategy_type": "cross_track_mfd"},
+    {"name": "accounting_disagreement", "strategy_type": "accounting_disagreement"},
+    {"name": "market_disagreement", "strategy_type": "market_disagreement"},
+    {"name": "within_track_average", "strategy_type": "within_track_average"},
+    {"name": "pooled_mfd", "strategy_type": "pooled_mfd"},
+    {"name": "accounting_prediction", "strategy_type": "accounting_prediction"},
+    {"name": "market_prediction", "strategy_type": "market_prediction"},
+    {"name": "custom_all_three", "_note": "A custom combination: any columns of the file, any weights.",
+     "signal": {"accounting_disagreement_sd": 1, "market_disagreement_sd": 1, "mfd": 1}}
   ]
 }

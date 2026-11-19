@@ -42,12 +42,16 @@ def summary_table(monthly: pd.DataFrame, s: bt.Strategy, factors, lags: int) -> 
     return pd.DataFrame(out)
 
 
-def decile_table(buckets: pd.DataFrame, chars: pd.DataFrame, factors, lags: int) -> pd.DataFrame:
-    """One row per bucket plus the bottom-minus-top spread: mean, NW t, SD, Sharpe, CAPM and FF6 alphas,
-    average stocks and formation characteristics."""
+def decile_table(buckets: pd.DataFrame, chars: pd.DataFrame, factors, lags: int, direction: str = "low"
+                 ) -> pd.DataFrame:
+    """One row per bucket plus the spread the trade earns (bottom minus top for direction "low", top minus
+    bottom for "high"): mean, NW t, SD, Sharpe, CAPM and FF6 alphas, average stocks and formation characteristics."""
     p = buckets.pivot(index="month", columns="bucket", values="ret")
     n = buckets.groupby("bucket")["n"].mean()
-    series = [(str(b), p[b]) for b in p.columns] + [(f"1 − {p.columns[-1]}", p[p.columns[0]] - p[p.columns[-1]])]
+    first, last = p.columns[0], p.columns[-1]
+    spread = ((f"{last} − {first}", p[last] - p[first]) if direction == "high"
+              else (f"{first} − {last}", p[first] - p[last]))
+    series = [(str(b), p[b]) for b in p.columns] + [spread]
     rows = []
     for name, r in series:
         m = bt.perf_metrics(r, lags)

@@ -1,35 +1,11 @@
 {
   "name": "percentile_sweep",
   "_note": "How the result changes with the size of the tails (5/10/20/30%).",
-  "data": {
-    "path": "data/mfd_60.csv",
-    "ret_col": "actual_excess_return",
-    "me_col": "me"
-  },
+  "data": {"path": "data/mfd_60.csv"},
   "factors_dir": "config/factors",
-  "defaults": {
-    "weighting": "equal",
-    "sweep": {
-      "tail_pct": [
-        5,
-        10,
-        20,
-        30
-      ]
-    }
-  },
+  "defaults": {"weighting": "equal", "sweep": {"tail_pct": [5, 10, 20, 30]}},
   "strategies": [
-    {
-      "name": "market_sd",
-      "signal": {
-        "market_disagreement_sd": 1
-      }
-    },
-    {
-      "name": "cross_track_mfd",
-      "signal": {
-        "mfd": 1
-      }
-    }
+    {"name": "market_disagreement", "strategy_type": "market_disagreement"},
+    {"name": "cross_track_mfd", "strategy_type": "cross_track_mfd"}
   ]
 }

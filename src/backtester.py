@@ -4,12 +4,16 @@ Disagreement-to-Alpha backtester (Task 7, Fall 2026).
 Run from the repository root:
 
     python -m src.backtester config/backtest/baseline.json [more configs ...] [--no-plot]
+    python -m src.backtester config/backtest/baseline.json --data data/mfd_120.csv   # same config, other file
+    python -m src.backtester --list-data                       # data files found and their strategy types
 
 Results go to results/backtest/<config name>/. Paths inside configs are relative to the repository root.
 
-Input: a stock-month panel where each row is a stock at a formation month `eom`,
-with signal columns known at `eom`, the return realized over the NEXT month
-(e.g. `actual_excess_return` == JKP `ret_exc_lead1m`), and market cap `me` at `eom`.
+Input: any stock-month file in data/ (CSV or Parquet) where each row is a stock at a formation month,
+with signal columns known at that month, the return realized over the NEXT month and, optionally,
+market cap at formation. Column names are recognized through config/backtest/columns.json, which maps
+them onto roles (cross-track gap, within-track SDs, track forecasts); STRATEGY_TYPES below are defined on
+roles, so a strategy type runs on every file that has its columns.
 
 Each strategy:
   1. builds one score per stock-month from one or more signal columns
@@ -35,7 +39,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from pathlib import Path
 
 import numpy as np
@@ -53,14 +57,21 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 class Strategy:
     name: str
     # {column: weight}. Each column is standardized within month, then summed with weights.
+    # Leave empty and give `strategy_type` instead in a config: resolve_strategy() fills it.
     signal: dict
+    # Which STRATEGY_TYPES entry this is (None = a custom combination of columns)
+    strategy_type: str | None = None
+    # "low": long the LOW scores, short the high ones (disagreement). "high": the reverse (predictions).
+    direction: str = "low"
     # "rank" (percentile rank, default), "zscore", or "raw"
     standardize: str = "rank"
-    # Percentile ranges of the combined score. Low disagreement = low percentiles.
-    long_pct: list | None = field(default_factory=lambda: [0, 10])
-    short_pct: list | None = field(default_factory=lambda: [90, 100])
-    # Shortcut: tail_pct=10 means long [0,10], short [90,100] (overrides long/short_pct)
+    # Percentile ranges of the combined score (0 = lowest). Explicit ranges override tail_pct.
+    long_pct: list | None = None
+    short_pct: list | None = None
+    # Shortcut: tail_pct=10 means long [0,10], short [90,100] for direction "low" (reversed for "high").
+    # With no ranges and no tail_pct, tail_pct defaults to 10.
     tail_pct: float | None = None
+    long_only: bool = False             # drop the short leg
     weighting: str = "equal"            # "equal" or "value"
     holding_months: int = 1             # K: each cohort is held K months (overlapping)
     ramp_up: str = "drop"               # "drop" or "cash" (see module docstring)
@@ -75,9 +86,17 @@ class Strategy:
     tie_method: str = "average"
 
     def __post_init__(self):
+        if self.direction not in ("low", "high"):
+            raise ValueError(f"{self.name}: direction must be 'low' or 'high'")
+        if self.tail_pct is None and self.long_pct is None and self.short_pct is None:
+            self.tail_pct = 10
         if self.tail_pct is not None:
-            self.long_pct = [0, self.tail_pct]
-            self.short_pct = [100 - self.tail_pct, 100]
+            t = self.tail_pct
+            low_end, high_end = [0, t], [100 - t, 100]
+            self.long_pct, self.short_pct = ((low_end, high_end) if self.direction == "low"
+                                             else (high_end, low_end))
+        if self.long_only:
+            self.short_pct = None
         checks = {
             "weighting": ("equal", "value"),
             "standardize": ("rank", "zscore", "raw"),
@@ -93,25 +112,115 @@ class Strategy:
         if self.holding_months < 1:
             raise ValueError(f"{self.name}: holding_months must be >= 1")
         if not self.signal:
-            raise ValueError(f"{self.name}: signal needs at least one column")
+            raise ValueError(f"{self.name}: signal needs at least one column "
+                             "(for a strategy_type, call resolve_strategy() with the data's roles first)")
 
 
-def expand_strategies(cfg: dict) -> list[Strategy]:
-    """Merge `defaults` into each strategy and expand any `sweep` (Cartesian product)."""
+# Strategy types, in the order the dashboard lists them. `signal` names ROLES, not columns: each data
+# file's columns are mapped onto roles by config/backtest/columns.json, so one type runs on any file
+# that has the columns it needs (last year's predictions file, mfd_60.csv, mfd_120.csv, ...).
+STRATEGY_TYPES = {
+    "cross_track_mfd": {
+        "label": "Cross-track MFD",
+        "signal": {"cross_gap": 1.0}, "direction": "low",
+        "description": "Gap between the accounting and market tracks' average forecasts, |accounting − market|. "
+                       "Long the stocks where the two tracks agree most, short where they disagree most.",
+    },
+    "accounting_disagreement": {
+        "label": "Accounting disagreement",
+        "signal": {"accounting_sd": 1.0}, "direction": "low",
+        "description": "Spread (SD) of the accounting track's investors' forecasts. Long where those investors "
+                       "agree most, short where they disagree most.",
+    },
+    "market_disagreement": {
+        "label": "Market disagreement",
+        "signal": {"market_sd": 1.0}, "direction": "low",
+        "description": "Spread (SD) of the market track's investors' forecasts. Long where those investors "
+                       "agree most, short where they disagree most.",
+    },
+    "within_track_average": {
+        "label": "Accounting + market disagreement (50/50)",
+        "signal": {"accounting_sd": 0.5, "market_sd": 0.5}, "direction": "low",
+        "description": "Each month, the average of a stock's two within-track disagreement ranks: how much "
+                       "investors disagree inside their own track, ignoring the gap between the tracks.",
+    },
+    "pooled_mfd": {
+        "label": "Pooled MFD (all investors)",
+        "signal": {"pooled_mfd": 1.0}, "direction": "low",
+        "description": "Spread of all investors' forecasts pooled across both tracks, which combines both "
+                       "within-track spreads and the gap between the tracks. Computed from the columns above "
+                       "when the file doesn't include it.",
+    },
+    "accounting_prediction": {
+        "label": "Accounting prediction (last year's Task 7)",
+        "signal": {"accounting_forecast": 1.0}, "direction": "high",
+        "description": "The accounting track's predicted return (this year: the average of its investors). "
+                       "Long the highest predicted returns, short the lowest.",
+    },
+    "market_prediction": {
+        "label": "Market prediction (last year's Task 7)",
+        "signal": {"market_forecast": 1.0}, "direction": "high",
+        "description": "The market track's predicted return (this year: the average of its investors). "
+                       "Long the highest predicted returns, short the lowest.",
+    },
+}
+
+
+def available_types(roles: dict) -> list[str]:
+    """Strategy types a data file supports, given its role -> column map."""
+    return [k for k, t in STRATEGY_TYPES.items() if all(r in roles for r in t["signal"])]
+
+
+def resolve_type(strategy_type: str, roles: dict) -> tuple[dict, str]:
+    """(signal as {column: weight}, direction) for a strategy type on one data file."""
+    if strategy_type not in STRATEGY_TYPES:
+        raise ValueError(f"unknown strategy_type '{strategy_type}'; choose from {list(STRATEGY_TYPES)}")
+    t = STRATEGY_TYPES[strategy_type]
+    missing = [r for r in t["signal"] if r not in roles]
+    if missing:
+        raise LookupError(f"this data file has no column for {missing}")
+    return {roles[r]: w for r, w in t["signal"].items()}, t["direction"]
+
+
+def resolve_strategy(d: dict, roles: dict) -> dict:
+    """Fill `signal` and `direction` of a strategy dict from its `strategy_type`."""
+    d = dict(d)
+    if d.get("strategy_type"):
+        signal, direction = resolve_type(d["strategy_type"], roles)
+        if not d.get("signal"):
+            d["signal"] = signal
+        d.setdefault("direction", direction)
+    return d
+
+
+def expand_strategies(cfg: dict, roles: dict | None = None, columns=None, has_me: bool = True):
+    """Merge `defaults` into each strategy, expand any `sweep` (Cartesian product) and resolve strategy
+    types against the data file. Returns (strategies, skipped) where skipped = [(name, reason)]: strategies
+    the data file can't support are skipped, not errors, so one config runs on any data file."""
     defaults = cfg.get("defaults", {})
-    out = []
+    out, skipped = [], []
     for s in cfg["strategies"]:
-        s = {**defaults, **s}
+        s = {k: v for k, v in {**defaults, **s}.items() if not k.startswith("_")}
         sweep = s.pop("sweep", None) or {}
-        if not sweep:
-            out.append(Strategy(**s))
-            continue
-        keys = list(sweep)
-        for combo in itertools.product(*(sweep[k] for k in keys)):
-            v = dict(zip(keys, combo))
-            tag = "__".join(f"{k}={_fmt(x)}" for k, x in v.items())
-            out.append(Strategy(**{**s, **v, "name": f"{s['name']}__{tag}"}))
-    return out
+        combos = [dict(zip(sweep, c)) for c in itertools.product(*sweep.values())] if sweep else [{}]
+        for v in combos:
+            d = {**s, **v}
+            if v:
+                d["name"] = f"{s['name']}__" + "__".join(f"{k}={_fmt(x)}" for k, x in v.items())
+            try:
+                if d.get("strategy_type"):
+                    if roles is None:
+                        raise LookupError("strategy_type needs the data file's columns")
+                    d = resolve_strategy(d, roles)
+                if columns is not None and (gone := [c for c in d.get("signal", {}) if c not in columns]):
+                    raise LookupError(f"this data file has no column {gone}")
+                if d.get("weighting") == "value" and not has_me:
+                    raise LookupError("value weighting needs a market-cap column")
+            except LookupError as e:
+                skipped.append((d["name"], str(e)))
+                continue
+            out.append(Strategy(**d))
+    return out, skipped
 
 
 def _fmt(x):
@@ -132,21 +241,147 @@ def index_to_month(idx) -> pd.DatetimeIndex:
     return pd.DatetimeIndex(first + MonthEnd(0))
 
 
+def _normalize(df: pd.DataFrame, id_col, date_col, ret_col, me_col) -> pd.DataFrame:
+    """Rename the key columns to id / eom / ret / me and add the integer month `fm`."""
+    rename = {id_col: "id", date_col: "eom", ret_col: "ret"}
+    if me_col:
+        rename[me_col] = "me"
+    clash = [t for s, t in rename.items() if t != s and t in df.columns]     # e.g. a raw `ret` column
+    if not me_col and "me" in df.columns:
+        clash.append("me")
+    df = df.drop(columns=clash).rename(columns=rename)
+    df["eom"] = pd.to_datetime(df["eom"]) + MonthEnd(0)
+    df["fm"] = month_index(df["eom"])
+    return df
+
+
 def load_panel(path, id_col="id", date_col="eom", ret_col="actual_excess_return", me_col="me",
                verbose=True):
     """Rows without a next-month return are KEPT: they are part of the formation universe
     (you can't know at formation that a stock will delist); they just contribute no return."""
-    df = pd.read_csv(path)
-    rename = {id_col: "id", date_col: "eom", ret_col: "ret"}
-    if me_col:
-        rename[me_col] = "me"
-    df = df.rename(columns=rename)
-    df["eom"] = pd.to_datetime(df["eom"]) + MonthEnd(0)
-    df["fm"] = month_index(df["eom"])
+    df = _normalize(pd.read_csv(path), id_col, date_col, ret_col, me_col)
     if verbose:
         print(f"Loaded {path}: {len(df):,} rows, {df.ret.isna().sum():,} without a next-month return, "
               f"{df.eom.nunique()} formation months ({df.eom.min():%Y-%m} to {df.eom.max():%Y-%m})")
     return df
+
+
+# --- any data file: column detection, discovery, derived pooled MFD --------------------------------
+
+COLUMNS_FILE = REPO_ROOT / "config" / "backtest" / "columns.json"
+DATA_DIR = REPO_ROOT / "data"
+DATA_PATTERNS = ("*.csv", "*.csv.gz", "*.parquet")
+
+
+def load_column_spec(path=COLUMNS_FILE) -> dict:
+    return json.loads(Path(path).read_text())
+
+
+def _read_table(path, header_only=False):
+    path = Path(path)
+    if path.suffix == ".parquet":
+        if header_only:
+            import pyarrow.parquet as pq
+            return list(pq.read_schema(path).names)
+        return pd.read_parquet(path)
+    return list(pd.read_csv(path, nrows=0).columns) if header_only else pd.read_csv(path)
+
+
+def _first(columns, names):
+    return next((n for n in names if n in columns), None)
+
+
+def _can_pool(roles: dict) -> bool:
+    return ("accounting_sd" in roles and "market_sd" in roles
+            and ("cross_gap" in roles or ("accounting_forecast" in roles and "market_forecast" in roles)))
+
+
+def detect_columns(columns, spec: dict | None = None, overrides: dict | None = None) -> dict | None:
+    """Map a file's header onto what the backtester needs, using config/backtest/columns.json.
+    Returns {"columns": {id, date, return, market_cap}, "roles": {role: column}}, or None when the file has
+    no id, date or return column. `overrides` forces a column name (None = the file has none)."""
+    spec = spec or load_column_spec()
+    columns = list(columns)
+    found = {k: _first(columns, spec[k]) for k in ("id", "date", "return", "market_cap")}
+    for k, v in (overrides or {}).items():
+        if v is not None and v not in columns:
+            raise KeyError(f"column '{v}' is not in the file")
+        found[k] = v
+    if not (found["id"] and found["date"] and found["return"]):
+        return None
+    roles = {r: c for r, names in spec["roles"].items() if (c := _first(columns, names))}
+    if "pooled_mfd" not in roles and _can_pool(roles):
+        roles["pooled_mfd"] = "pooled_mfd"                      # derived at load, see add_pooled_mfd
+    return {"columns": found, "roles": roles}
+
+
+def add_pooled_mfd(df: pd.DataFrame, roles: dict) -> bool:
+    """SD of ALL investors' forecasts pooled across both tracks, from the per-track columns.
+    With n investors in each track and population SDs (ddof=0, as src/evaluate_oos.py computes them):
+        pooled variance = (sd_acct^2 + sd_mkt^2) / 2 + (gap / 2)^2,   gap = mean_acct - mean_mkt
+    (within-track variance averaged over the two tracks + between-track variance). Exact for equal track
+    sizes; approximate otherwise."""
+    if "pooled_mfd" in df.columns or not _can_pool(roles):
+        return False
+    if "accounting_forecast" in roles and "market_forecast" in roles:
+        gap = df[roles["accounting_forecast"]] - df[roles["market_forecast"]]
+    else:
+        gap = df[roles["cross_gap"]]
+    df["pooled_mfd"] = np.sqrt((df[roles["accounting_sd"]] ** 2 + df[roles["market_sd"]] ** 2) / 2
+                               + (gap / 2) ** 2)
+    return True
+
+
+def dataset_name(path, data_dir=DATA_DIR) -> str:
+    path = Path(path)
+    try:
+        return path.resolve().relative_to(Path(data_dir).resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def discover_datasets(data_dir=DATA_DIR, spec: dict | None = None) -> dict:
+    """Every file under data/ the backtester can use: it needs id, date and return columns and the
+    columns of at least one strategy type. {name: {"path", "columns", "roles", "types"}}, name = the
+    file's path inside data/ (its file name for files directly in data/)."""
+    spec = spec or load_column_spec()
+    data_dir = Path(data_dir)
+    out = {}
+    paths = sorted({p for pat in DATA_PATTERNS for p in data_dir.rglob(pat)})
+    for p in paths:
+        if any(part.startswith(".") for part in p.relative_to(data_dir).parts):
+            continue
+        try:
+            det = detect_columns(_read_table(p, header_only=True), spec)
+        except Exception:                                       # unreadable file: not a dataset
+            continue
+        if det and (types := available_types(det["roles"])):
+            out[dataset_name(p, data_dir)] = {"path": p, **det, "types": types}
+    return out
+
+
+def load_dataset(path, spec: dict | None = None, overrides: dict | None = None, verbose=True):
+    """Load any data file. Returns (panel, info): the panel has id / eom / fm / ret (/ me) plus the
+    file's own columns (and pooled_mfd when derived); info has the detected columns, the role -> column
+    map, the strategy types available, the columns usable in a custom combination, and size."""
+    spec = spec or load_column_spec()
+    det = detect_columns(_read_table(path, header_only=True), spec, overrides)
+    if det is None:
+        raise ValueError(f"{path}: no id, date or return column found; add its column names to {COLUMNS_FILE}")
+    c = det["columns"]
+    df = _normalize(_read_table(path), c["id"], c["date"], c["return"], c["market_cap"])
+    derived = ["pooled_mfd"] if add_pooled_mfd(df, det["roles"]) else []
+    skip = {"id", "eom", "fm", "ret", "me", *(v for v in c.values() if v), *spec.get("not_signals", [])}
+    signals = [col for col in df.columns if col not in skip and pd.api.types.is_numeric_dtype(df[col])]
+    info = {"name": dataset_name(path), "path": str(path), "columns": c, "roles": det["roles"],
+            "derived": derived, "types": available_types(det["roles"]), "signals": signals,
+            "rows": len(df), "months": int(df.eom.nunique()),
+            "first_month": f"{df.eom.min():%Y-%m}", "last_month": f"{df.eom.max():%Y-%m}"}
+    if verbose:
+        print(f"Loaded {path}: {len(df):,} rows, {df.ret.isna().sum():,} without a next-month return, "
+              f"{info['months']} formation months ({info['first_month']} to {info['last_month']}); "
+              f"strategy types: {', '.join(info['types'])}")
+    return df, info
 
 
 def load_ff_factors(factors_dir) -> pd.DataFrame:
@@ -434,7 +669,8 @@ def summarize(res: Result, factors: pd.DataFrame | None) -> tuple[dict, pd.DataF
             m[f"alpha_{row.model}_t"] = row.alpha_t_nw
         fr.insert(0, "strategy", s.name)
 
-    head = {"strategy": s.name, "signal": json.dumps(s.signal), "standardize": s.standardize,
+    head = {"strategy": s.name, "strategy_type": s.strategy_type or "custom", "direction": s.direction,
+            "signal": json.dumps(s.signal), "standardize": s.standardize,
             "long_pct": _fmt(s.long_pct) if s.long_pct else "", "short_pct": _fmt(s.short_pct) if s.short_pct else "",
             "weighting": s.weighting, "holding_months": s.holding_months, "ramp_up": s.ramp_up}
     return {**head, **m}, fr
@@ -475,12 +711,15 @@ def sanity_checks(res: Result) -> list[dict]:
         f"{meta['last_formation_month']:%Y-%m}")
     cov = (u["n_with_return"] / u["n_stocks"]).mean() * 100
     add("Return coverage", cov > 95, f"{cov:.1f}% of formation stocks have a next-month return")
-    # two separate code paths should agree: bottom-minus-top bucket vs the long/short legs
-    tail = 100 / s.n_buckets
-    if s.long_pct == [0, tail] and s.short_pct == [100 - tail, 100] and "ls_ret" in mo:
+    # two separate code paths should agree: the end buckets vs the long/short legs
+    tail, n = 100 / s.n_buckets, s.n_buckets
+    ends = {(0, tail): 1, (100 - tail, 100): n}
+    lo_b = ends.get(tuple(s.long_pct)) if s.long_pct else None
+    sh_b = ends.get(tuple(s.short_pct)) if s.short_pct else None
+    if lo_b and sh_b and lo_b != sh_b and "ls_ret" in mo:
         b = res.buckets.pivot(index="month", columns="bucket", values="ret")
-        diff = ((b[1] - b[s.n_buckets]) - mo["ls_ret"]).abs().max()
-        add("Buckets match legs", diff < 1e-9, f"bucket 1 - bucket {s.n_buckets} equals long - short "
+        diff = ((b[lo_b] - b[sh_b]) - mo["ls_ret"]).abs().max()
+        add("Buckets match legs", diff < 1e-9, f"bucket {lo_b} - bucket {sh_b} equals long - short "
             f"(max difference {diff:.1e})")
     return out
 
@@ -488,18 +727,27 @@ def sanity_checks(res: Result) -> list[dict]:
 # Driver
 # --------------------------------------------------------------------------------------
 
-def run_config(config_path, out_root="results/backtest", plot=True):
+def run_config(config_path, out_root="results/backtest", plot=True, data=None):
+    """Run every strategy in a config. `data` (a path) runs the same config on another data file; results
+    then go to results/backtest/<config name>__<file name>/ so runs on different files don't overwrite."""
     config_path = Path(config_path)
     base = REPO_ROOT                                     # config paths are relative to the repo root
     cfg = json.loads(config_path.read_text())
-    strategies = expand_strategies(cfg)
 
-    data = cfg["data"]
-    panel = load_panel(base / data["path"], data.get("id_col", "id"), data.get("date_col", "eom"),
-                       data.get("ret_col", "actual_excess_return"), data.get("me_col", "me"))
+    data_cfg = cfg.get("data", {})
+    path = Path(data) if data else Path(data_cfg["path"])
+    path = path if path.is_absolute() else base / path
+    keys = {"id_col": "id", "date_col": "date", "ret_col": "return", "me_col": "market_cap"}
+    overrides = {} if data else {k2: data_cfg[k] for k, k2 in keys.items() if k in data_cfg}
+    panel, info = load_dataset(path, overrides=overrides)
+    strategies, skipped = expand_strategies(cfg, info["roles"], set(panel.columns), "me" in panel)
+    for name, why in skipped:
+        print(f"  skipped {name}: {why}")
+    if not strategies:
+        raise SystemExit(f"No strategy in {config_path} can run on {path.name}.")
     factors = load_ff_factors(base / cfg["factors_dir"]) if cfg.get("factors_dir") else None
 
-    out = base / out_root / cfg["name"]
+    out = base / out_root / (cfg["name"] + (f"__{path.name.split('.')[0]}" if data else ""))
     out.mkdir(parents=True, exist_ok=True)
     summaries, monthly_all, bucket_all, fr_all = [], [], [], []
     for s in strategies:
@@ -526,7 +774,9 @@ def run_config(config_path, out_root="results/backtest", plot=True):
     if fr_all:
         pd.concat(fr_all).to_csv(out / "factor_regressions.csv", index=False)
     (out / "config_used.json").write_text(json.dumps(
-        {**cfg, "expanded_strategies": [asdict(s) for s in strategies]}, indent=2))
+        {**cfg, "data_used": {k: v for k, v in info.items() if k != "path"},
+         "expanded_strategies": [asdict(s) for s in strategies],
+         "skipped": [{"name": n, "reason": r} for n, r in skipped]}, indent=2))
     if plot:
         _plot_cumulative(pd.concat(monthly_all), out / "cumulative_returns.png")
     print(f"Wrote results to {out}")
@@ -553,13 +803,22 @@ def _plot_cumulative(monthly_all, path):
 
 def main():
     parser = argparse.ArgumentParser(description="Disagreement portfolio-sort backtester (Task 7)")
-    parser.add_argument("configs", nargs="+", type=Path, help="Config files, e.g. config/backtest/baseline.json")
+    parser.add_argument("configs", nargs="*", type=Path, help="Config files, e.g. config/backtest/baseline.json")
     parser.add_argument("--out", default="results/backtest", help="Output folder, relative to the repo root")
     parser.add_argument("--no-plot", action="store_true", help="Skip the cumulative-return PNG")
+    parser.add_argument("--data", help="Run the configs on this data file instead of the one they name")
+    parser.add_argument("--list-data", action="store_true",
+                        help="List the data files in data/ and the strategy types each supports, then stop")
     args = parser.parse_args()
+    if args.list_data:
+        for name, d in discover_datasets().items():
+            print(f"{name}: {', '.join(d['types'])}")
+        return
+    if not args.configs:
+        parser.error("give at least one config file (or --list-data)")
     for c in args.configs:
         print(f"\n=== {c} ===")
-        run_config(c, args.out, plot=not args.no_plot)
+        run_config(c, args.out, plot=not args.no_plot, data=args.data)
 
 
 if __name__ == "__main__":
