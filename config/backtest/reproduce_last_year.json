@@ -1,0 +1,11 @@
+{
+  "name": "reproduce_last_year",
+  "_note": "Sanity check: last year's Task 7 (top 10% minus bottom 10% by predicted return, equal-weighted). Expect market 2.84%/mo t=2.89, accounting 1.52% t=1.98 (1.99 last year). Ties ranked like pd.qcut.",
+  "data": {"path": "data/lastyear_bbl_predictions.csv"},
+  "factors_dir": "config/factors",
+  "defaults": {"tail_pct": 10, "weighting": "equal", "tie_method": "min"},
+  "strategies": [
+    {"name": "lastyear_accounting_HmL", "strategy_type": "accounting_prediction"},
+    {"name": "lastyear_market_HmL", "strategy_type": "market_prediction"}
+  ]
+}

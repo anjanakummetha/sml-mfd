@@ -1,0 +1,13 @@
+# Light and dark are both defined, so the app follows the viewer's system setting
+# (a root-level [theme] would force a single light-based custom theme).
+[theme.light]
+primaryColor = "#2a78d6"
+
+[theme.dark]
+primaryColor = "#3987e5"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true
