@@ -1,0 +1,70 @@
+{
+  "_note": "How the backtester recognizes the columns of any data file in data/. Each entry lists accepted column names, most preferred first. To use a file whose columns are named differently, add its names here; no code change is needed. Roles drive the strategy types (STRATEGY_TYPES in src/backtester.py).",
+  "id": [
+    "id",
+    "permno"
+  ],
+  "date": [
+    "eom",
+    "date"
+  ],
+  "return": [
+    "actual_excess_return",
+    "ret_exc_lead1m"
+  ],
+  "market_cap": [
+    "me"
+  ],
+  "roles": {
+    "cross_gap": [
+      "mfd",
+      "cross_track_disagreement_abs",
+      "forecast_disagreement_abs"
+    ],
+    "accounting_sd": [
+      "accounting_disagreement_sd"
+    ],
+    "market_sd": [
+      "market_disagreement_sd"
+    ],
+    "pooled_mfd": [
+      "pooled_mfd"
+    ],
+    "accounting_forecast": [
+      "accounting_mean",
+      "prediction_accounting"
+    ],
+    "market_forecast": [
+      "market_mean",
+      "prediction_market"
+    ]
+  },
+  "not_signals": [
+    "mode",
+    "train_window",
+    "actual_raw_return",
+    "ret_lead1m",
+    "ret_exc",
+    "prc",
+    "permno",
+    "gvkey",
+    "sic",
+    "crsp_shrcd",
+    "crsp_exchcd",
+    "ff49",
+    "gics",
+    "cross_track_disagreement_abs"
+  ],
+  "labels": {
+    "mfd": "Cross-track gap",
+    "accounting_disagreement_sd": "Accounting disagreement",
+    "market_disagreement_sd": "Market disagreement",
+    "pooled_mfd": "Pooled MFD",
+    "signed_gap": "Signed gap (acct − mkt)",
+    "accounting_mean": "Accounting mean forecast",
+    "market_mean": "Market mean forecast",
+    "prediction_accounting": "Accounting prediction",
+    "prediction_market": "Market prediction",
+    "forecast_disagreement_abs": "Cross-track gap"
+  }
+}
